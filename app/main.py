@@ -16,9 +16,14 @@ from app.config import CLAUDE_HAIKU45_ENABLED, DEFAULT_MODEL_NAME
 app = FastAPI()
 
 # CORS for frontend
+FRONTEND_ORIGINS = [
+    "http://localhost:3000",                       # local dev
+    "https://model-x-frontend-nmva.vercel.app"    # production
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
