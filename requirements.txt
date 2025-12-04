@@ -8,3 +8,5 @@ apscheduler>=3.10.5
 python-dotenv>=1.0.0
 psycopg2-binary
 sqlmodel
+textblob
+langdetect
