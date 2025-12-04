@@ -19,5 +19,17 @@ class NewsItem(SQLModel, table=True):
     language: Optional[str] = "en"
     sentiment: Optional[float] = None
 
+class CurrencyRate(SQLModel, table=True):
+    __tablename__ = "currency_rates"
+    __table_args__ = (
+        UniqueConstraint("currency", "date", name="uix_currency_date"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    date: str                   # real DATE type (not string)
+    currency: str                # e.g., "USD"
+    exchange_rate_LKR: float         # e.g., 324.15
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)

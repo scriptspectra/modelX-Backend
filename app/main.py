@@ -6,6 +6,7 @@ from app.crud import create_news_item
 from app.schemas import NewsItemCreate
 from app.scraper.news_scraper import run_scraper
 from app.config import FRONTEND_ORIGIN
+from app.scheduled.currency_scheduler import start_scheduler
 import threading
 
 app = FastAPI()
@@ -38,3 +39,13 @@ def create_item(item: NewsItemCreate):
 def read_items():
     with Session(engine) as session:
         return session.exec(select(NewsItem)).all()
+    
+
+@app.get("/")
+def root():
+    return {"message": "Backend running"}
+
+@app.on_event("startup")
+def start_currency_scheduler():
+    start_scheduler()
+

@@ -28,11 +28,10 @@ def detect_language(text: str) -> str:
 
 def parse_datetime(date_text: str):
     try:
-        # Normalize whitespace and non-breaking spaces
-        date_text = " ".join(date_text.split())
+        date_text = " ".join(date_text.split())  # normalize spaces
         dt = datetime.strptime(date_text, "%B %d, %Y %I:%M %p")
         return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
-    except:
+    except Exception as e:
         now = datetime.now()
         return now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
 
@@ -45,7 +44,7 @@ def scrape_adaderana(category: str, pages=1):
         res = requests.get(url)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # Hot News
+        # --- Hot News ---
         if category == "hot":
             articles = soup.select("div.news-story div.story-text")
             for article in articles:
@@ -76,8 +75,9 @@ def scrape_adaderana(category: str, pages=1):
                     "comments": comments
                 })
 
-        # Tech & Entertainment
+        # --- Tech & Entertainment ---
         else:
+            # select all story-text blocks inside main columns
             articles = soup.select("div.col-lg-7.col-sm-8.col-xs-12 .story-text")
             for article in articles:
                 title_tag = article.select_one("h4 a")
@@ -87,10 +87,11 @@ def scrape_adaderana(category: str, pages=1):
                 news_url = urljoin("https://www.adaderana.lk/", title_tag['href'])
                 description = article.select_one("p").get_text(strip=True) if article.select_one("p") else title
 
-                # Category detection from <h3>
+                # Detect category from nearest <h3> heading
                 parent_h3 = article.find_previous("h3")
                 detected_category = parent_h3.get_text(strip=True) if parent_h3 else category.capitalize()
 
+                # parse date
                 date_span = article.select_one("div.col-xs-12.comments span")
                 date_str, time_str = parse_datetime(date_span.get_text(strip=True)) if date_span else parse_datetime("")
 
@@ -118,3 +119,9 @@ def scrape_news():
     for category in ["tech", "entertainment", "hot"]:
         all_news.extend(scrape_adaderana(category, pages=5))
     return all_news
+
+if __name__ == "__main__":
+    news = scrape_news()
+    print(f"Total articles scraped: {len(news)}")
+    for item in news:
+        print(item["title"], item["date"], item["category"])
