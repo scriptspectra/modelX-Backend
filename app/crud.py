@@ -8,10 +8,18 @@ def create_news_item(item: NewsItemCreate):
         title=item.title,
         description=item.description,
         date=item.date,
-        time=item.time
+        time=item.time,
+        source=item.source,
+        category=item.category,
+        url=item.url,
+        word_count=item.word_count,
+        language=item.language,
+        sentiment=item.sentiment
     ).on_conflict_do_nothing(
-        index_elements=['title', 'date']  # requires a UNIQUE constraint on (title, date)
+        index_elements=['title', 'date']  # requires UNIQUE(title, date)
     )
+
     with Session(engine) as session:
         session.execute(stmt)
         session.commit()
+    return item  # return the input object (optional)

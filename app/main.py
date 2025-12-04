@@ -36,6 +36,5 @@ def create_item(item: NewsItemCreate):
 
 @app.get("/news_items/")
 def read_items():
-    # Directly query from DB since get_all_news_items() is no longer in crud.py
     with Session(engine) as session:
         return session.exec(select(NewsItem)).all()
