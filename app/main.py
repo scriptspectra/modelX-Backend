@@ -152,3 +152,131 @@ def get_currency_rates(currency: str = Query(...), time_range: str = Query("30d"
 
     parsed.sort(key=lambda x: x[0])
     return [{"date": d.isoformat(), "rate": rate} for d, rate in parsed]
+
+
+@app.get("/currency_rates/insights")
+def get_currency_insights():
+    """
+    Compute and return:
+    1. USD to LKR (today's latest rate or most recent available)
+    2. Fastest gaining currency (% change in last 7 days)
+    3. Fastest losing currency (% change in last 7 days)
+    4. Most volatile currency (std dev in last 7 days)
+    """
+    def _parse_date_field(val):
+        """Parse date from various formats"""
+        if val is None:
+            return None
+        if isinstance(val, date):
+            return val
+        if isinstance(val, datetime):
+            return val.date()
+        s = str(val).strip()
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except Exception:
+                continue
+        try:
+            import re
+            parts = re.split(r"\D+", s)
+            parts = [p for p in parts if p]
+            if len(parts) == 3:
+                d, m, y = map(int, parts)
+                if y < 100:
+                    y += 2000
+                return date(y, m, d)
+        except Exception:
+            pass
+        return None
+
+    today = datetime.utcnow().date()
+    week_ago = today - timedelta(days=7)
+
+    with Session(engine) as session:
+        # Get all rates in last 7 days (no date filtering yet, we'll parse)
+        week_rates = session.exec(select(CurrencyRate)).all()
+
+    # Parse and filter: only keep rates in the 7-day window
+    parsed_rates = []
+    for rate in week_rates:
+        parsed_date = _parse_date_field(rate.date)
+        if not parsed_date:
+            continue
+        if parsed_date < week_ago or parsed_date > today:
+            continue
+        parsed_rates.append((parsed_date, rate.currency, rate.exchange_rate_LKR))
+
+    # Build map: currency -> sorted list of (date, rate) tuples
+    currency_series: dict = {}
+    for parsed_date, cur, rate_val in parsed_rates:
+        if cur not in currency_series:
+            currency_series[cur] = []
+        currency_series[cur].append((parsed_date, rate_val))
+
+    # Sort each currency's rates by date
+    for cur in currency_series:
+        currency_series[cur].sort(key=lambda x: x[0])
+
+    # Find most recent date with USD data (or use today)
+    usd_rates = currency_series.get("USD", [])
+    usd_rate = None
+    if usd_rates:
+        usd_rate = usd_rates[-1][1]  # most recent
+    
+    usd_value = f"{usd_rate:.2f}" if usd_rate else "N/A"
+    usd_change = "0.0%"
+    if usd_rate and len(usd_rates) > 1:
+        old_rate = usd_rates[0][1]
+        if old_rate != 0:
+            change_pct = ((usd_rate - old_rate) / old_rate) * 100
+            usd_change = f"{change_pct:+.2f}%"
+
+    # Calculate % change and volatility
+    metrics = {}
+    for cur, rates in currency_series.items():
+        if len(rates) < 2:
+            continue
+        first_val = rates[0][1]
+        last_val = rates[-1][1]
+        pct_change = ((last_val - first_val) / first_val * 100) if first_val != 0 else 0
+        
+        # volatility: standard deviation
+        values = [r[1] for r in rates]
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        volatility = variance ** 0.5
+        
+        metrics[cur] = {
+            "pct_change": pct_change,
+            "volatility": volatility,
+            "current_rate": last_val
+        }
+
+    # Find fastest gainer, loser, and most volatile
+    gainer = max(metrics.items(), key=lambda x: x[1]["pct_change"], default=(None, {}))
+    loser = min(metrics.items(), key=lambda x: x[1]["pct_change"], default=(None, {}))
+    volatile = max(metrics.items(), key=lambda x: x[1]["volatility"], default=(None, {}))
+
+    return {
+        "usd_to_lkr": {
+            "value": usd_value,
+            "change": usd_change,
+            "is_positive": float(usd_change.rstrip('%').replace('+', '')) >= 0 if usd_change != "0.0%" else False
+        },
+        "fastest_gainer": {
+            "currency": gainer[0] or "N/A",
+            "change": f"{gainer[1].get('pct_change', 0):+.2f}%",
+            "rate": f"{gainer[1].get('current_rate', 0):.2f}"
+        },
+        "fastest_loser": {
+            "currency": loser[0] or "N/A",
+            "change": f"{loser[1].get('pct_change', 0):+.2f}%",
+            "rate": f"{loser[1].get('current_rate', 0):.2f}"
+        },
+        "most_volatile": {
+            "currency": volatile[0] or "N/A",
+            "volatility": f"{volatile[1].get('volatility', 0):.4f}",
+            "rate": f"{volatile[1].get('current_rate', 0):.2f}"
+        }
+    }
