@@ -285,3 +285,27 @@ def get_currency_insights():
             "rate": f"{volatile[1].get('current_rate', 0):.2f}"
         }
     }
+
+from app.scraper.trends_scraper import youtube_trends, reddit_trends
+from app.scraper.sheduler import start_trends_scheduler
+
+@app.on_event("startup")
+def start_trends_scraper():
+    # Start background trends scraper
+    start_trends_scheduler()
+
+# API endpoints
+@app.get("/trends/youtube")
+def get_youtube_trends():
+    return {"youtube_trends": youtube_trends}
+
+@app.get("/trends/reddit")
+def get_reddit_trends():
+    return {"reddit_trends": reddit_trends}
+
+@app.get("/trends/all")
+def get_all_trends():
+    return {
+        "youtube_trends": youtube_trends,
+        "reddit_trends": reddit_trends
+    }
