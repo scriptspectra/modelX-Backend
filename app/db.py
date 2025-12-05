@@ -1,11 +1,15 @@
 from sqlmodel import SQLModel, Field, create_engine, UniqueConstraint
 from typing import Optional
 from .config import POSTGRES_URI
+from datetime import datetime
+from sqlalchemy import Column
+from sqlalchemy import JSON as SA_JSON
 
 engine = create_engine(POSTGRES_URI, echo=True)
 
 class NewsItem(SQLModel, table=True):
-    __table_args__ = (UniqueConstraint("title", "date", name="uix_title_date"),)  # NEW
+    # Make title+description unique instead of title+date
+    __table_args__ = (UniqueConstraint("title", "description", name="uix_title_description"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
@@ -33,3 +37,14 @@ class CurrencyRate(SQLModel, table=True):
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+
+
+class StabilitySnapshot(SQLModel, table=True):
+    """Persisted stability snapshot for historical smoothing and analysis."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    composite_score: float = Field(default=0.0)
+    category_scores: dict = Field(sa_column=Column(SA_JSON), default={})
+    top_keywords: list = Field(sa_column=Column(SA_JSON), default=[])
+    total_items: int = Field(default=0)
+    last_snapshot_path: Optional[str] = None

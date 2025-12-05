@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, date
 import os
 import json
 from app.config import CLAUDE_HAIKU45_ENABLED, DEFAULT_MODEL_NAME
+from app.stability import push_snapshot, get_buffer_status, load_latest_snapshot_from_db, get_current_snapshot
 
 app = FastAPI()
 
@@ -33,6 +34,11 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
+    # Restore previous stability state from DB (if any) so smoothing survives restarts
+    try:
+        load_latest_snapshot_from_db()
+    except Exception:
+        pass
     # initialize model feature flag state (in-memory + optional persistence)
     # persisted file lives in project root 'model_flag.json'
     flag_file = os.path.join(os.path.dirname(__file__), "..", "model_flag.json")
@@ -288,6 +294,7 @@ def get_currency_insights():
 
 from app.scraper.trends_scraper import youtube_trends, reddit_trends
 from app.scraper.sheduler import start_trends_scheduler
+from app.stability import push_snapshot, get_buffer_status
 
 @app.on_event("startup")
 def start_trends_scraper():
@@ -309,3 +316,34 @@ def get_all_trends():
         "youtube_trends": youtube_trends,
         "reddit_trends": reddit_trends
     }
+
+
+@app.post('/stability/push_snapshot')
+def stability_push_snapshot(file_path: str):
+    """Push a snapshot JSON file into the 60-minute rolling buffer and return updated heuristic scores.
+
+    Body/form parameter: `file_path` - path to the JSON snapshot file (can be absolute or relative).
+    """
+    try:
+        res = push_snapshot(file_path)
+        return res
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/stability/status')
+def stability_status():
+    return get_buffer_status()
+
+
+@app.get('/stability/current')
+def stability_current():
+    """Return current smoothed stability snapshot for frontend consumption."""
+    try:
+        return get_current_snapshot()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
